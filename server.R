@@ -627,7 +627,7 @@ shinyServer(function(input, output, session) {
     highchartOutput("contents", height = plot_height(), width = "100%")
   })
   
-
+  
   
   output$pseudoreplication <- renderUI({
     if (is.null(homo_test_results())) {
@@ -769,7 +769,7 @@ shinyServer(function(input, output, session) {
         }
         
       }
-   
+      
     }
     
     
@@ -915,7 +915,7 @@ shinyServer(function(input, output, session) {
     res
   })
   
-
+  
   output$anova_res <- DT::renderDataTable({
     req(anova_results())
     
@@ -1249,19 +1249,17 @@ shinyServer(function(input, output, session) {
   })
   
   
-  
-  
   ### SIXTH TAB
   
-  output$downloadSampleDatasets <- downloadHandler(filename <-
-                                                     function() {
-                                                       paste("sample_datasets", "zip", sep = ".")
-                                                     },
-                                                   
-                                                   content <- function(file) {
-                                                     file.copy("sample_datasets.zip", file)
-                                                   },
-                                                   contentType = "application/zip")
+  output$downloadSampleDatasets <- downloadHandler(
+    filename = function() "sample_datasets.zip",
+    content = function(file) {
+      zip(
+        file, files = dir("sample_datasets", full.names = TRUE)
+      )
+    },
+    contentType = "application/zip"
+  )
   
   
   
@@ -1283,7 +1281,7 @@ shinyServer(function(input, output, session) {
                           easyClose = TRUE))
   })
   
-
+  
   
   output$report <- downloadHandler(
     # For PDF output, change this to "report.pdf"
@@ -1332,11 +1330,11 @@ shinyServer(function(input, output, session) {
       )
     }
   )
-
+  
   output$downloadReport <- renderUI({
     if (!is.null(ph_results())) {
       downloadButton("report", "Generate report")
     }
   })
-
+  
 })
