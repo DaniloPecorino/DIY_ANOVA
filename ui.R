@@ -147,13 +147,6 @@ shinyUI(
                                tags$p("An action button to download your report will appear here once you have finished your analysis.")
                       ),
                       uiOutput("downloadReport")
-                      # fluidRow(downloadButton("report", "Generate report")),
-                      # hr(),
-                      # fluidRow(downloadButton('downloadResults', "Download ANOVA table")),
-                      # hr(),
-                      # fluidRow(downloadButton('downloadPostHoc', "Download post hoc table")),
-                      # hr(),
-                      # fluidRow(downloadButton('downloadDIY_ANOVA', "Download this app"))
                       ),
     text = HTML("<font size='1'><i>by Danilo Pecorino</i></font>")
 
