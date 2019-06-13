@@ -1063,7 +1063,7 @@ shinyServer(function(input, output, session) {
       
       
       buildRmdBundle(
-        "anova_report.rmd",
+        "anova_report.Rmd",
         out,
         vars = list(
           init = init,
