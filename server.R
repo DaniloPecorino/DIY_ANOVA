@@ -263,9 +263,9 @@ shinyServer(function(input, output, session) {
   
   # Choose the denominator for the asine-square root transformation
   output$denominator_selector <- renderUI({
-    req(response_transf_fun())
+    req(response_transf())
     
-    if (identical(response_transf_fun(), 'asinroot')) {
+    if (identical(input$selected_transformation, 'asinroot')) {
       numericInput(
         'den',
         'Denominator',
@@ -275,35 +275,33 @@ shinyServer(function(input, output, session) {
     }
   })
   
-  
   response_vector <- metaReactive({
     !!inData() %>%
       pull(!!response()) %>%
       as.numeric()
   })
   
-  # TODO: how to meta-program this?
-  response_transf_fun <- reactive({
+  # Calculate the transformed data
+  response_transf <- metaReactive2({
     transf <- input$selected_transformation %||% ""
     
-    switch(
+    transf_fun <- switch(
       transf,
       sqrt = structure(sqrt, caption = "transformed (square root)"),
       log = structure(log, caption = "transformed (natural logarithm of x + 1)"),
       asinroot = structure(function(x) asin(sqrt(x / input$den)), caption = "transformed (arcsine of square root)"),
       identity
     )
-  })
-  
-  # Calculate the transformed data
-  response_transf <- metaReactive({
-    !!response_vector() %>%
-      !!response_transf_fun()
+    
+    metaExpr({
+      !!response_vector() %>%
+        (!!transf_fun)()
+    })
   })
   
   # Calculate the transformed data normality test
   normal_test_transf <- metaReactive2({
-    req(response_transf_fun())
+    req(response_transf())
     
     metaExpr({
       ks.test(
@@ -317,7 +315,7 @@ shinyServer(function(input, output, session) {
   
   
   output$normal_test_transf_table <- renderUI({
-    req(response_transf_fun())
+    req(normal_test_transf())
     
     HTML(
       paste0(
@@ -339,7 +337,7 @@ shinyServer(function(input, output, session) {
   })
   
   output$trans_normality_icon <- renderUI({
-    req(response_transf_fun())
+    req(normal_test_transf())
     
     icon(
       ifelse(
@@ -372,7 +370,7 @@ shinyServer(function(input, output, session) {
     
     metaExpr({
       !!inData() %>%
-        select_(!!predictors()) %>%
+        select_(.dots = !!predictors()) %>%
         mutate_all(as.factor)
     })
   })
@@ -413,7 +411,7 @@ shinyServer(function(input, output, session) {
       paste0(
         "<p  style='font-size:150%;text-align:center;'><b>",
         ifelse(
-          !identical(response_transf_fun(), identity),
+          !identical(response_transf(), identity),
           '',
           'Transformed '
         ),
@@ -608,36 +606,34 @@ shinyServer(function(input, output, session) {
         name = x,
         nested = nested,
         # the formula term
-        term = if (length(nested)) paste(x, nested, sep = "%in%") else x
+        term = if (length(nested)) call("%in%", sym(x), sym(nested)) else sym(x)
       )
     })
     
-    # TODO: remove use of as.formula()
-    form <- if (length(predictors()) == 1) {
-      # If one predictor, tis always fixed
-      as.formula(
-        paste(response(), " ~ as.fixed(", predictors(), ")")
-      )
-    } else if (sum(is_nested) == 0) {
-      #  All crossed factors
-      is_nested <- vapply(predictor_defs, function(def) length(def$nested) > 0, logical(1))
-      terms <- sapply(predictor_defs, "[[", "term")
+    is_nested <- vapply(predictor_defs, function(def) length(def$nested) > 0, logical(1))
+    terms <- sapply(predictor_defs, "[[", "term")
+    
+    # construct the right-hand side of the lm formula
+    # TODO: run this across Danilo and see if the huerestics here 
+    # are at least somewhat sensible (especially for nested factors)
+    rhs <- if (length(predictors()) == 1) {
       
-      as.formula(
-        paste0(response(), " ~", paste0(terms, collapse = " * "))
-      )
+      sym(predictors())
+      
+    } else if (sum(is_nested) == 0) {
+      
+      #  All crossed factors
+      Reduce(function(x, y) call("*", x, y), syms(predictors()))
+      
     } else {
       # Case when nested factors are present
-      # TODO: this is almost certainly not the same as before...
-      # what's going on with the interactions?
-      rhs <- paste0(
-        paste0(terms, collapse = " + "), 
-        paste0(terms[!is_nested], collapse = " * "),
-        sep = "+"
-      )
       
-      as.formula(paste0(response(), " ~ ", rhs))
+      nested <- Reduce(function(x, y) call("+", x, y), terms[is_nested])
+      crossed <- Reduce(function(x, y) call("*", x, y), terms[!is_nested])
+      call("+", crossed, nested)
     }
+    
+    form <- new_formula(sym(response()), rhs)
     
     metaExpr({
       lm(!!form, data = !!model_dat())
@@ -647,24 +643,12 @@ shinyServer(function(input, output, session) {
   anova_results <- metaReactive2({
     req(linear_model())
     
-    res <- tryCatch(
+    tryCatch(
       metaExpr({
         gad(!!linear_model())
       }),
       error = c
     )
-    
-    if (!is.null(res)) {
-      row_nms <- row.names(res)
-      row_idx <- seq(1, length(row_nms) - 1)
-      row.names(res)[row_idx] <- gsub("types\\$", "", row_nms[row_idx])
-      attributes(res)$heading[2] <-
-        gsub("response_transf\\(\\)",
-             as.character(response()),
-             attributes(res)$heading[2])
-      
-    }
-    res
   })
   
   
@@ -674,7 +658,10 @@ shinyServer(function(input, output, session) {
     metaExpr({
       !!anova_results() %>%
         mutate_all(format_c, 3) %>%
-        datatable(options = list(dom = 't', pageLength = 50)) %>%
+        datatable(
+          rownames = row.names(!!anova_results()),
+          options = list(dom = 't', pageLength = 50)
+        ) %>%
         formatStyle(
           'Pr(>F)',
           target = 'row',
@@ -975,7 +962,7 @@ shinyServer(function(input, output, session) {
         inData = quote(inData),
         response = quote(response),
         predictors = quote(predictors),
-        response_transf_fun = quote(response_transf_fun),
+        response_vector = quote(response_vector),
         response_transf = quote(response_transf),
         normal_test_transf = quote(normal_test_transf),
         factors_df = quote(factors_df),
@@ -1009,7 +996,7 @@ shinyServer(function(input, output, session) {
       
       normal_test_transf <- expandCode(
         {
-          response_transf_fun <- !!response_transf_fun()  
+          response_vector <- !!response_vector()
           response_transf <- !!response_transf()  
           normal_test_transf <- !!normal_test_transf()
         }, 
@@ -1074,7 +1061,8 @@ shinyServer(function(input, output, session) {
         patchCalls = patch_calls
       )
       
-      build_rmd_bundle(
+      
+      buildRmdBundle(
         "anova_report.rmd",
         out,
         vars = list(

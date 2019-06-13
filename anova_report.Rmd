@@ -43,7 +43,7 @@ For the following analysis, **`r predictors`** will be modelled as categorical p
 {{normal_test_transf}}
 ```
 
-A **`r normal_test_transf$method`** was performed on the `r attr(response_transf_fun, "caption")` response variable was **`r ifelse(normal_test_transf$p.value > 0.5, "not significant", "significant")`** (D statistic = `r formatC(normal_test_transf$statistic)`, p-value = `r formatC(normal_test_transf$p.value)`). The distribution of the response variable, therefore, is `r ifelse(normal_test_transf$p.value > 0.5, "not", "significantly")`  significantly different from a normal distribution with the same mean and variance.
+A **`r normal_test_transf$method`** was performed on the  response variable was **`r ifelse(normal_test_transf$p.value > 0.5, "not significant", "significant")`** (D statistic = `r formatC(normal_test_transf$statistic)`, p-value = `r formatC(normal_test_transf$p.value)`). The distribution of the response variable, therefore, is `r ifelse(normal_test_transf$p.value > 0.5, "not", "significantly")`  significantly different from a normal distribution with the same mean and variance.
 
 The followings charts are: **on the left a *QQ plot* ** produced to compare the distribution quantiles of the response variable with the theoretical quantiles of a normal distribution; **on the right a *bar chart* **that provides a visual representation of the distribution of the response variable itself.
 
@@ -71,7 +71,7 @@ Homogeneity of variances (i.e. homoscedasticity) was tested via **`r names(varia
 {{linear_model}}
 ```
 
-Factors were defined as follows: **`r Map(function(x, y) {  paste(x, "as", if (inherits(y, "random")) "random" else "fixed") }, names(factors_df), factors_df)`**, and the linear model underlying this ANOVA is:
+Factors were defined as follows: **`r d <- select_(model_dat, .dots = predictors); Map(function(x, y) {  paste(x, "as", if (inherits(y, "random")) "random" else "fixed") }, names(d), d)`**, and the linear model underlying this ANOVA is:
 
 <center> **`r deparse(formula(linear_model))`** </center>
 <br>
