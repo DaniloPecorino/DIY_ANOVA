@@ -84,19 +84,21 @@ shinyServer(function(input, output, session) {
     
     data_table <- DT::datatable(inData())
     
-    if (length(predictors())) {
-      data_table <- formatStyle(
-        data_table, 
-        columns = predictors(),
-        backgroundColor = "#00808030"
-      )
-    }
-    
-    if (length(response())) {
+    if (isTRUE(response() %in% names(inData()))) {
       data_table <- formatStyle(
         data_table, 
         columns = response(),
         backgroundColor = "#fa807230"
+      )
+    }
+    
+    for (x in predictors()) {
+      if (!x %in% names(inData())) next
+      
+      data_table <- formatStyle(
+        data_table, 
+        columns = x,
+        backgroundColor = "#00808030"
       )
     }
     
@@ -249,12 +251,12 @@ shinyServer(function(input, output, session) {
       inputId = "selected_transformation",
       "Choose a transformation",
       choices = list(
-        None = 'none',
+        None = '',
         'Square root' = 'sqrt',
         'Natural log + 1' = 'log',
         "Arcsine of square root" = 'asinroot'
       ),
-      selected = 'none',
+      selected = '',
       multiple = F,
       options = list('actions-box' = TRUE, title = "Click here"),
       width = '80%'
@@ -316,6 +318,7 @@ shinyServer(function(input, output, session) {
   
   output$normal_test_transf_table <- renderUI({
     req(normal_test_transf())
+    req(isTruthy(input$selected_transformation))
     
     HTML(
       paste0(
@@ -338,6 +341,7 @@ shinyServer(function(input, output, session) {
   
   output$trans_normality_icon <- renderUI({
     req(normal_test_transf())
+    req(isTruthy(input$selected_transformation))
     
     icon(
       ifelse(
@@ -738,7 +742,7 @@ shinyServer(function(input, output, session) {
     
     metaExpr({
       n <- length(!!F_den())
-      fs <- purrr::compact(lapply(seq_len(n), function(i) {
+      purrr::compact(lapply(seq_len(n), function(i) {
         f <- (!!F_den())[i]
         if (is.na(f)) return(NULL)
         anova <- (!!anova_results())[i, ]
@@ -747,6 +751,7 @@ shinyServer(function(input, output, session) {
           ifelse(anova$"F value" > hq, anova$"F value", hq)
         x <- seq(0, 1.50 * maximum, length.out = 500)
         list(
+          name = row.names(anova),
           hq = hq,
           hf = df(hq, anova$Df, f),
           maximum = maximum,
@@ -755,7 +760,6 @@ shinyServer(function(input, output, session) {
           F_obs = anova$"F value"
         )
       }))
-      setNames(fs, row.names(!!anova_results())[-1])
     })
   })
   
@@ -813,7 +817,7 @@ shinyServer(function(input, output, session) {
             max = max(x$x)
           ) %>%
           hc_yAxis(title = list(text = "Probability")) %>%
-          #hc_title(text = names(F_source())[i]) %>%
+          hc_title(text = x$name) %>%
           hc_legend(FALSE) %>%
           hc_tooltip(
             formatter = JS(
