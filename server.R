@@ -603,38 +603,58 @@ shinyServer(function(input, output, session) {
     req(model_dat())
     
     predictor_defs <- lapply(predictors(), function(x) {
-      # keep track of what predictor is nested inside this one (if any)
-      nested <- input[[paste0(x, '_nest')]]
-      nested <- if (identical(nested, "None")) NULL else nested
+      # find all the predictors that are nested inside this one
+      nested_vars <- NULL
+      find_nested <- function(y) {
+        nest <- input[[paste0(y, '_nest')]]
+        nest <- if (identical(nest, "None")) NULL else nest
+        nested_vars <<- c(nested_vars, nest)
+        if (length(nest)) find_nested(nest)
+      }
+      find_nested(x)
+      
       list(
         name = x,
-        nested = nested,
-        # the formula term
-        term = if (length(nested)) call("%in%", sym(x), sym(nested)) else sym(x)
+        nested = nested_vars,
+        term = if (!length(nested_vars)) sym(x) else Reduce(function(x, y) call("%in%", x, y), syms(c(x, nested_vars)))
       )
     })
     
     is_nested <- vapply(predictor_defs, function(def) length(def$nested) > 0, logical(1))
-    terms <- sapply(predictor_defs, "[[", "term")
     
     # construct the right-hand side of the lm formula
-    # TODO: run this across Danilo and see if the huerestics here 
-    # are at least somewhat sensible (especially for nested factors)
     rhs <- if (length(predictors()) == 1) {
-      
+      # the easy case
       sym(predictors())
-      
     } else if (sum(is_nested) == 0) {
-      
-      #  All crossed factors
+      # all crossed factors
       Reduce(function(x, y) call("*", x, y), syms(predictors()))
       
     } else {
-      # Case when nested factors are present
       
-      nested <- Reduce(function(x, y) call("+", x, y), terms[is_nested])
-      crossed <- Reduce(function(x, y) call("*", x, y), terms[!is_nested])
-      call("+", crossed, nested)
+      # Case where nested factors are present
+      terms <- lapply(predictor_defs, "[[", "term")
+      
+      # Include all main effects
+      model <- Reduce(function(x, y) call("+", x, y), terms)
+      
+      # interact crossed with nested, as long as the crossed var isn't part of the nested
+      crossed_terms <- terms[!is_nested]
+      nested_terms <- terms[is_nested]
+      for (cross in crossed_terms) {
+        for (nest in nested_terms) {
+          if (grepl(expr_text(cross), expr_text(nest), fixed = TRUE)) next
+          model <- call("+", model, call("*", cross, nest))
+        }
+      }
+      
+      # interact all crossed vars
+      if (length(crossed_terms) > 1) {
+        crossed_int <- Reduce(function(x, y) call("*", x, y), crossed_terms)
+        model <- call("+", model, crossed_int)
+      }
+      
+      model
     }
     
     form <- new_formula(sym(response()), rhs)
@@ -711,7 +731,7 @@ shinyServer(function(input, output, session) {
     as.numeric(input$selected_alpha)
   })
   
-  F_den <- metaReactive2({
+  F_den <- metaReactive2(bindToReturn = TRUE, {
     req(anova_results(), linear_model(), alpha())
     
     metaExpr({
@@ -737,7 +757,7 @@ shinyServer(function(input, output, session) {
     
   })
   
-  F_source <- metaReactive2({
+  F_source <- metaReactive2(bindToReturn = TRUE, {
     req(anova_results(), F_den())
     
     metaExpr({
