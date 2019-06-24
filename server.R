@@ -731,10 +731,10 @@ shinyServer(function(input, output, session) {
     as.numeric(input$selected_alpha)
   })
   
-  F_den <- metaReactive2(bindToReturn = TRUE, {
+  F_den <- metaReactive2({
     req(anova_results(), linear_model(), alpha())
     
-    metaExpr({
+    metaExpr(bindToReturn = TRUE, {
       den <-
         vector(mode = "numeric", length = (nrow(!!anova_results()) - 1))
       
@@ -757,10 +757,10 @@ shinyServer(function(input, output, session) {
     
   })
   
-  F_source <- metaReactive2(bindToReturn = TRUE, {
+  F_source <- metaReactive2({
     req(anova_results(), F_den())
     
-    metaExpr({
+    metaExpr(bindToReturn = TRUE, {
       n <- length(!!F_den())
       purrr::compact(lapply(seq_len(n), function(i) {
         f <- (!!F_den())[i]
