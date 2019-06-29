@@ -84,19 +84,21 @@ shinyServer(function(input, output, session) {
     
     data_table <- DT::datatable(inData())
     
-    if (length(predictors())) {
-      data_table <- formatStyle(
-        data_table, 
-        columns = predictors(),
-        backgroundColor = "#00808030"
-      )
-    }
-    
-    if (length(response())) {
+    if (isTRUE(response() %in% names(inData()))) {
       data_table <- formatStyle(
         data_table, 
         columns = response(),
         backgroundColor = "#fa807230"
+      )
+    }
+    
+    for (x in predictors()) {
+      if (!x %in% names(inData())) next
+      
+      data_table <- formatStyle(
+        data_table, 
+        columns = x,
+        backgroundColor = "#00808030"
       )
     }
     
@@ -249,12 +251,12 @@ shinyServer(function(input, output, session) {
       inputId = "selected_transformation",
       "Choose a transformation",
       choices = list(
-        None = 'none',
+        None = '',
         'Square root' = 'sqrt',
         'Natural log + 1' = 'log',
         "Arcsine of square root" = 'asinroot'
       ),
-      selected = 'none',
+      selected = '',
       multiple = F,
       options = list('actions-box' = TRUE, title = "Click here"),
       width = '80%'
@@ -316,6 +318,7 @@ shinyServer(function(input, output, session) {
   
   output$normal_test_transf_table <- renderUI({
     req(normal_test_transf())
+    req(isTruthy(input$selected_transformation))
     
     HTML(
       paste0(
@@ -338,6 +341,7 @@ shinyServer(function(input, output, session) {
   
   output$trans_normality_icon <- renderUI({
     req(normal_test_transf())
+    req(isTruthy(input$selected_transformation))
     
     icon(
       ifelse(
@@ -599,38 +603,58 @@ shinyServer(function(input, output, session) {
     req(model_dat())
     
     predictor_defs <- lapply(predictors(), function(x) {
-      # keep track of what predictor is nested inside this one (if any)
-      nested <- input[[paste0(x, '_nest')]]
-      nested <- if (identical(nested, "None")) NULL else nested
+      # find all the predictors that are nested inside this one
+      nested_vars <- NULL
+      find_nested <- function(y) {
+        nest <- input[[paste0(y, '_nest')]]
+        nest <- if (identical(nest, "None")) NULL else nest
+        nested_vars <<- c(nested_vars, nest)
+        if (length(nest)) find_nested(nest)
+      }
+      find_nested(x)
+      
       list(
         name = x,
-        nested = nested,
-        # the formula term
-        term = if (length(nested)) call("%in%", sym(x), sym(nested)) else sym(x)
+        nested = nested_vars,
+        term = if (!length(nested_vars)) sym(x) else Reduce(function(x, y) call("%in%", x, y), syms(c(x, nested_vars)))
       )
     })
     
     is_nested <- vapply(predictor_defs, function(def) length(def$nested) > 0, logical(1))
-    terms <- sapply(predictor_defs, "[[", "term")
     
     # construct the right-hand side of the lm formula
-    # TODO: run this across Danilo and see if the huerestics here 
-    # are at least somewhat sensible (especially for nested factors)
     rhs <- if (length(predictors()) == 1) {
-      
+      # the easy case
       sym(predictors())
-      
     } else if (sum(is_nested) == 0) {
-      
-      #  All crossed factors
+      # all crossed factors
       Reduce(function(x, y) call("*", x, y), syms(predictors()))
       
     } else {
-      # Case when nested factors are present
       
-      nested <- Reduce(function(x, y) call("+", x, y), terms[is_nested])
-      crossed <- Reduce(function(x, y) call("*", x, y), terms[!is_nested])
-      call("+", crossed, nested)
+      # Case where nested factors are present
+      terms <- lapply(predictor_defs, "[[", "term")
+      
+      # Include all main effects
+      model <- Reduce(function(x, y) call("+", x, y), terms)
+      
+      # interact crossed with nested, as long as the crossed var isn't part of the nested
+      crossed_terms <- terms[!is_nested]
+      nested_terms <- terms[is_nested]
+      for (cross in crossed_terms) {
+        for (nest in nested_terms) {
+          if (grepl(expr_text(cross), expr_text(nest), fixed = TRUE)) next
+          model <- call("+", model, call("*", cross, nest))
+        }
+      }
+      
+      # interact all crossed vars
+      if (length(crossed_terms) > 1) {
+        crossed_int <- Reduce(function(x, y) call("*", x, y), crossed_terms)
+        model <- call("+", model, crossed_int)
+      }
+      
+      model
     }
     
     form <- new_formula(sym(response()), rhs)
@@ -710,7 +734,7 @@ shinyServer(function(input, output, session) {
   F_den <- metaReactive2({
     req(anova_results(), linear_model(), alpha())
     
-    metaExpr({
+    metaExpr(bindToReturn = TRUE, {
       den <-
         vector(mode = "numeric", length = (nrow(!!anova_results()) - 1))
       
@@ -736,9 +760,9 @@ shinyServer(function(input, output, session) {
   F_source <- metaReactive2({
     req(anova_results(), F_den())
     
-    metaExpr({
+    metaExpr(bindToReturn = TRUE, {
       n <- length(!!F_den())
-      fs <- purrr::compact(lapply(seq_len(n), function(i) {
+      purrr::compact(lapply(seq_len(n), function(i) {
         f <- (!!F_den())[i]
         if (is.na(f)) return(NULL)
         anova <- (!!anova_results())[i, ]
@@ -747,6 +771,7 @@ shinyServer(function(input, output, session) {
           ifelse(anova$"F value" > hq, anova$"F value", hq)
         x <- seq(0, 1.50 * maximum, length.out = 500)
         list(
+          name = row.names(anova),
           hq = hq,
           hf = df(hq, anova$Df, f),
           maximum = maximum,
@@ -755,7 +780,6 @@ shinyServer(function(input, output, session) {
           F_obs = anova$"F value"
         )
       }))
-      setNames(fs, row.names(!!anova_results())[-1])
     })
   })
   
@@ -813,7 +837,7 @@ shinyServer(function(input, output, session) {
             max = max(x$x)
           ) %>%
           hc_yAxis(title = list(text = "Probability")) %>%
-          #hc_title(text = names(F_source())[i]) %>%
+          hc_title(text = x$name) %>%
           hc_legend(FALSE) %>%
           hc_tooltip(
             formatter = JS(
