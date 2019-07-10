@@ -20,7 +20,7 @@ format_c <- function(x, digits = 3) {
 
 shinyServer(function(input, output, session) {
   
-  inData <- reactive({
+  inData <- metaReactive({
     req(input$file1)
     
     read.csv(
@@ -73,10 +73,10 @@ shinyServer(function(input, output, session) {
   })
   
   # Define predictors
-  predictors <- reactive(input$selected_predictors)
+  predictors <- metaReactive({ !!input$selected_predictors })
   
   # Define response
-  response <- reactive(input$selected_response)
+  response <- metaReactive({ !!input$selected_response })
   
   # Draw data table
   output$uploaded_data <- DT::renderDataTable({
@@ -981,27 +981,13 @@ shinyServer(function(input, output, session) {
       
       saveRDS(inData(), "inData.rds")
       
-      # patch all the reactives!
-      patch_calls <- list(
-        inData = quote(inData),
-        response = quote(response),
-        predictors = quote(predictors),
-        response_vector = quote(response_vector),
-        response_transf = quote(response_transf),
-        normal_test_transf = quote(normal_test_transf),
-        factors_df = quote(factors_df),
-        factors_vector = quote(factors_vector),
-        model_dat = quote(model_dat),
-        linear_model = quote(linear_model),
-        anova_results = quote(anova_results),
-        variance_test = quote(variance_test),
-        F_den = quote(F_den),
-        F_source = quote(F_source),
-        ph_results = quote(ph_results)
-      )
+      ec <- newExpansionContext()
+      ec$substituteMetaReactive(inData, function() {
+        metaExpr(readRDS("inData.rds"))
+      })
       
-      init <- expandCode(
-        {
+      init <- expandChain(
+        quote({
           library(dplyr)
           library(tidyr)
           library(rlang)
@@ -1011,80 +997,56 @@ shinyServer(function(input, output, session) {
           library(multcompView)
           library(lsmeans)
           library(highcharter)
-          inData <- readRDS("inData.rds")
-          response <- !!response()
-          predictors <- !!predictors()
-        },
-        patchCalls = patch_calls
+        }),
+        invisible(response()),
+        invisible(predictors()),
+        invisible(inData()),
+        .expansionContext = ec
       )
       
-      normal_test_transf <- expandCode(
-        {
-          response_vector <- !!response_vector()
-          response_transf <- !!response_transf()  
-          normal_test_transf <- !!normal_test_transf()
-        }, 
-        patchCalls = patch_calls
+      normal_test_transf <- expandChain(
+        invisible(normal_test_transf()),
+        .expansionContext = ec
       )
       
-      qq_plot <- expandCode(
-        !!output$QQ_plot(),
-        patchCalls = patch_calls
+      qq_plot <- expandChain(
+        output$QQ_plot(),
+        .expansionContext = ec
       )
       
-      variance_test <- expandCode(
-        {
-          factors_df <- !!factors_df()
-          factors_vector <- !!factors_vector()
-          '# Enter `summary(variance_test)`` in your R console for more details'
-          variance_test <- !!variance_test()
-        },
-        patchCalls = patch_calls
+      variance_test <- expandChain(
+        invisible(variance_test()),
+        .expansionContext = ec
       )
       
-      boxplot <- expandCode(
-        {
-          !!output$contents()
-        },
-        patchCalls = patch_calls
+      boxplot <- expandChain(
+        output$contents(),
+        .expansionContext = ec
       )
       
-      linear_model <- expandCode(
-        {
-          model_dat <- !!model_dat()
-          linear_model <- !!linear_model()
-        },
-        patchCalls = patch_calls
+      linear_model <- expandChain(
+        invisible(linear_model()),
+        .expansionContext = ec
       )
       
-      anova_results <- expandCode(
-        {
-          anova_results <- !!anova_results()
-        },
-        patchCalls = patch_calls
+      anova_results <- expandChain(
+        invisible(anova_results()),
+        .expansionContext = ec
       )
       
-      F_chart <- expandCode(
-        {
-          F_den <- !!F_den()
-          F_source <- !!F_source()
-          !!output$F_chart()
-        },
-        patchCalls = patch_calls
+      F_chart <- expandChain(
+        output$F_chart(),
+        .expansionContext = ec
       )
       
-      posthoc_results <- expandCode(
-        {
-          format_c <- function(x, digits = 3) {
+      posthoc_results <- expandChain(
+          quote(format_c <- function(x, digits = 3) {
             y <- formatC(x, digits)
             ifelse(is.na(y), "", y)
-          }
-          ph_results <- !!ph_results()
-          !!output$posthoc_res_table()
-        },
-        patchCalls = patch_calls
+          }),
+          output$posthoc_res_table(),
+        .expansionContext = ec
       )
-      
       
       buildRmdBundle(
         "anova_report.Rmd",
@@ -1100,6 +1062,7 @@ shinyServer(function(input, output, session) {
           F_chart = F_chart,
           posthoc_results = posthoc_results
         ),
+        #render = FALSE,
         include_files = "inData.rds",
         render_args = list(
           params = list(posthoc = input$adjustment)
