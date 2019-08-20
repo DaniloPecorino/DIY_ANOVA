@@ -73,10 +73,10 @@ shinyServer(function(input, output, session) {
   })
   
   # Define predictors
-  predictors <- metaReactive({ !!input$selected_predictors })
+  predictors <- metaReactive({ ..(input$selected_predictors) })
   
   # Define response
-  response <- metaReactive({ !!input$selected_response })
+  response <- metaReactive({ ..(input$selected_response) })
   
   # Draw data table
   output$uploaded_data <- DT::renderDataTable({
@@ -113,7 +113,7 @@ shinyServer(function(input, output, session) {
     req(inData(), response())
     
     metaExpr({
-      qqPlot <- qqnorm(!!response_transf(), plot = F)
+      qqPlot <- qqnorm(..(response_transf()), plot = F)
       qqPlot <- as.data.frame(qqPlot)
       qqPlot <- qqPlot[order(qqPlot$x), ]
       mod <- lm(y ~ x, qqPlot)
@@ -159,7 +159,7 @@ shinyServer(function(input, output, session) {
     req(sum(is.na(response_transf())) <= 1)
     
     metaExpr({
-      y <- !!response_transf()
+      y <- ..(response_transf())
       h <- hist(y, plot = F)
       d <- diff(h$breaks)[1]
       
@@ -198,10 +198,10 @@ shinyServer(function(input, output, session) {
     
     metaExpr({
       ks.test(
-        !!response_vector(), 
+        ..(response_vector()), 
         pnorm, 
-        mean(!!response_vector(), na.rm = T), 
-        sd(!!response_vector(), na.rm = T)
+        mean(..(response_vector()), na.rm = T), 
+        sd(..(response_vector()), na.rm = T)
       )
     })
   })
@@ -278,8 +278,8 @@ shinyServer(function(input, output, session) {
   })
   
   response_vector <- metaReactive({
-    !!inData() %>%
-      pull(!!response()) %>%
+    ..(inData()) %>%
+      pull(..(response())) %>%
       as.numeric()
   })
   
@@ -296,8 +296,8 @@ shinyServer(function(input, output, session) {
     )
     
     metaExpr({
-      !!response_vector() %>%
-        (!!transf_fun)()
+      ..(response_vector()) %>%
+        (..(transf_fun))
     })
   })
   
@@ -307,10 +307,10 @@ shinyServer(function(input, output, session) {
     
     metaExpr({
       ks.test(
-        !!response_transf(),
+        ..(response_transf()),
         pnorm,
-        mean(!!response_transf(), na.rm = T),
-        sd(!!response_transf(), na.rm = T)
+        mean(..(response_transf()), na.rm = T),
+        sd(..(response_transf()), na.rm = T)
       )
     })
   })
@@ -373,8 +373,8 @@ shinyServer(function(input, output, session) {
     req(inData(), predictors())
     
     metaExpr({
-      !!inData() %>%
-        select_(.dots = !!predictors()) %>%
+      ..(inData()) %>%
+        select_(.dots = ..(predictors())) %>%
         mutate_all(as.factor)
     })
   })
@@ -383,7 +383,7 @@ shinyServer(function(input, output, session) {
     req(factors_df())
     
     metaExpr({
-      !!factors_df() %>%
+      ..(factors_df()) %>%
         tidyr::unite(var) %>%
         pull(var) %>%
         as.factor()
@@ -396,7 +396,7 @@ shinyServer(function(input, output, session) {
     
     tryCatch({
       metaExpr({
-        bartlett.test(!!response_transf(), !!factors_vector())
+        bartlett.test(..(response_transf()), ..(factors_vector()))
       })
     },
     error = function(cond) {
@@ -453,25 +453,25 @@ shinyServer(function(input, output, session) {
     req(factors_df())
     
     metaExpr({
-      by <- !!factors_vector()
+      by <- ..(factors_vector())
       by_categories <- unique(by)
       
       highchart(height = 200 * sqrt(length(by_categories))) %>%
         hc_chart(inverted = T) %>%
         hc_legend(enabled = F) %>%
         hc_add_series_boxplot(
-          x = !!response_transf(),
+          x = ..(response_transf()),
           by = by,
           colorByPoint = FALSE,
           fillColor = "#c0d6e4",
           outliers = FALSE
         ) %>%
         hc_xAxis(categories = by_categories) %>%
-        hc_yAxis(title = list(text = !!response())) %>%
-        hc_title(text = !!paste0(
+        hc_yAxis(title = list(text = ..(response()))) %>%
+        hc_title(text = ..(paste0(
           "Boxplot of ", response(),
           " by ", paste(predictors(), collapse = ", ")
-        )) %>%
+        ))) %>%
         hc_tooltip(
           pointFormat = "Maximum: {point.high}<br/>
                  Upper quartile: {point.q3}<br/>
@@ -588,11 +588,11 @@ shinyServer(function(input, output, session) {
     }))
     
     metaExpr({
-      !!factors_df() %>%
+      ..(factors_df()) %>%
         mutate_all(as.fixed) %>%
-        mutate_at(!!random, as.random) %>%
+        mutate_at(..(random), as.random) %>%
         bind_cols(
-          setNames(tibble(!!response_transf()), !!response())
+          setNames(tibble(..(response_transf())), ..(response()))
         )
     })
   })
@@ -660,7 +660,7 @@ shinyServer(function(input, output, session) {
     form <- new_formula(sym(response()), rhs)
     
     metaExpr({
-      lm(!!form, data = !!model_dat())
+      lm(..(form), data = ..(model_dat()))
     })
   })
   
@@ -669,7 +669,7 @@ shinyServer(function(input, output, session) {
     
     tryCatch(
       metaExpr({
-        gad(!!linear_model())
+        gad(..(linear_model()))
       }),
       error = c
     )
@@ -680,10 +680,10 @@ shinyServer(function(input, output, session) {
     req(anova_results())
     
     metaExpr({
-      !!anova_results() %>%
+      ..(anova_results()) %>%
         mutate_all(format_c, 3) %>%
         datatable(
-          rownames = row.names(!!anova_results()),
+          rownames = row.names(..(anova_results())),
           options = list(dom = 't', pageLength = 50)
         ) %>%
         formatStyle(
@@ -736,9 +736,9 @@ shinyServer(function(input, output, session) {
     
     metaExpr(bindToReturn = TRUE, {
       den <-
-        vector(mode = "numeric", length = (nrow(!!anova_results()) - 1))
+        vector(mode = "numeric", length = (nrow(..(anova_results())) - 1))
       
-      factors_denominators <- estimates(!!linear_model())$f.versus
+      factors_denominators <- estimates(..(linear_model()))$f.versus
       row.names(factors_denominators) <-
         gsub("types\\$", "", row.names(factors_denominators))
       factors_denominators[, 1] <-
@@ -747,7 +747,7 @@ shinyServer(function(input, output, session) {
         NA
       
       for (i in 1:NROW(factors_denominators)) {
-        res <- !!anova_results()
+        res <- ..(anova_results())
         rows <- row.names(res) == factors_denominators[i]
         den[i] <- res[rows, ]$Df
       }
@@ -761,12 +761,12 @@ shinyServer(function(input, output, session) {
     req(anova_results(), F_den())
     
     metaExpr(bindToReturn = TRUE, {
-      n <- length(!!F_den())
+      n <- length(..(F_den()))
       purrr::compact(lapply(seq_len(n), function(i) {
-        f <- (!!F_den())[i]
+        f <- ..(F_den())[i]
         if (is.na(f)) return(NULL)
-        anova <- (!!anova_results())[i, ]
-        hq <- qf(!!alpha(), anova$Df, f)
+        anova <- ..(anova_results())[i, ]
+        hq <- qf(..(alpha()), anova$Df, f)
         maximum <- 1.32 * 
           ifelse(anova$"F value" > hq, anova$"F value", hq)
         x <- seq(0, 1.50 * maximum, length.out = 500)
@@ -789,7 +789,7 @@ shinyServer(function(input, output, session) {
     req(F_source(), F_den(), anova_results())
     
     metaExpr({
-      charts <- lapply(!!F_source(), function(x) {
+      charts <- lapply(..(F_source()), function(x) {
         Fs <- data.frame(x)
         Fs$group <- as.character(Fs$x < Fs$hq)
         
@@ -818,7 +818,7 @@ shinyServer(function(input, output, session) {
               list(
                 label = list(
                   text = paste0(
-                    as.character(!!alpha()),
+                    as.character(..(alpha())),
                     "th quantile = ",
                     format(x$hq, digits = 3)
                   ),
@@ -857,21 +857,21 @@ shinyServer(function(input, output, session) {
     req(linear_model())
     
     metaExpr({
-      df_ph <- cbind(!!response_transf(), !!factors_df())
+      df_ph <- cbind(..(response_transf()), ..(factors_df()))
       colnames(df_ph)[1] <- "resp_ph"
       
       model <- lm(resp_ph ~ ., data = df_ph)
       
-      ph_f <- colnames(!!factors_df())
+      ph_f <- colnames(..(factors_df()))
       
       leastsquare <-
-        lsmeans(model, specs = ph_f, adjust = !!input$adjustment)
+        lsmeans(model, specs = ph_f, adjust = ..(input$adjustment))
       
       cld(
         leastsquare,
         alpha = 0.05,
         Letters = letters,
-        adjust = !!input$adjustment
+        adjust = ..(input$adjustment)
       )
     })
   })
@@ -881,9 +881,9 @@ shinyServer(function(input, output, session) {
     req(ph_results())
     
     metaExpr({
-      ph_r_form <- mutate_all(!!ph_results(), format_c, 4)
+      ph_r_form <- mutate_all(..(ph_results()), format_c, 4)
       
-      colnames(ph_r_form)[(length(!!predictors()) + 1):ncol(ph_r_form)] <-
+      colnames(ph_r_form)[(length(..(predictors())) + 1):ncol(ph_r_form)] <-
         c("Least squares mean",
           "SE",
           "Df",
